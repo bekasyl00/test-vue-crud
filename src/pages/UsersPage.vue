@@ -6,12 +6,14 @@ import UserForm from '../components/users/UserForm.vue'
 import UserList from '../components/users/UserList.vue'
 import BaseAlert from '../components/ui/BaseAlert.vue'
 import BaseButton from '../components/ui/BaseButton.vue'
+import BaseModal from '../components/ui/BaseModal.vue'
 import { useUsersStore } from '../stores/users.store'
 import type { CreateUserDto, User, UserRole } from '../types/user'
 import { debounce } from '../utils/debounce'
 
 const usersStore = useUsersStore()
 const editingUser = ref<User | null>(null)
+const isFormOpen = ref(false)
 
 const users = computed(() => usersStore.users)
 const loading = computed(() => usersStore.loading)
@@ -42,14 +44,26 @@ async function onRoleChange(value: string): Promise<void> {
 
 function onEditUser(user: User): void {
   editingUser.value = user
+  isFormOpen.value = true
+}
+
+function openCreateForm(): void {
+  editingUser.value = null
+  isFormOpen.value = true
 }
 
 function resetForm(): void {
   editingUser.value = null
+  isFormOpen.value = false
   usersStore.clearStatus()
 }
 
 async function onDeleteUser(user: User): Promise<void> {
+  const shouldDelete = window.confirm(`Delete user ${user.name}?`)
+  if (!shouldDelete) {
+    return
+  }
+
   try {
     await usersStore.deleteUser(user.id)
     await usersStore.fetchUsers()
@@ -62,11 +76,11 @@ async function onSubmit(payload: CreateUserDto): Promise<void> {
   try {
     if (editingUser.value) {
       await usersStore.updateUser(editingUser.value.id, payload)
-      editingUser.value = null
     } else {
       await usersStore.createUser(payload)
     }
 
+    resetForm()
     await usersStore.fetchUsers()
   } catch {
     // Error state is already handled by store.
@@ -82,14 +96,15 @@ async function retryFetch(): Promise<void> {
   <main class="users-page">
     <header class="users-page__header">
       <h1>Users</h1>
-      <BaseButton variant="secondary" :disabled="loading || saving" @click="retryFetch">
-        Refresh
-      </BaseButton>
+      <div class="users-page__actions">
+        <BaseButton :disabled="loading || saving" @click="openCreateForm">Add user</BaseButton>
+        <BaseButton variant="secondary" :disabled="loading || saving" @click="retryFetch">
+          Refresh
+        </BaseButton>
+      </div>
     </header>
 
     <section class="users-page__grid">
-      <UserForm :initial-user="editingUser" :busy="saving" @submit="onSubmit" @cancel="resetForm" />
-
       <section class="users-page__content">
         <UserFilters
           :search="search"
@@ -115,6 +130,10 @@ async function retryFetch(): Promise<void> {
         </section>
       </section>
     </section>
+
+    <BaseModal :open="isFormOpen" :title="editingUser ? 'Edit user' : 'Create user'" @close="resetForm">
+      <UserForm :initial-user="editingUser" :busy="saving" @submit="onSubmit" @cancel="resetForm" />
+    </BaseModal>
   </main>
 </template>
 
@@ -137,10 +156,15 @@ async function retryFetch(): Promise<void> {
   font-size: 1.8rem;
 }
 
+.users-page__actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
 .users-page__grid {
   display: grid;
   gap: 1rem;
-  grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .users-page__content {
